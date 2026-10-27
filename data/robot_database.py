@@ -35,7 +35,7 @@ def add_room(room_code,floor,room_type, directions):
     cursor = connection.cursor()
 
     cursor.execute("""
-        INSERT INTO rooms (room_code,floor,room_type, directions)
+        INSERT OR IGNORE INTO rooms (room_code,floor,room_type, directions)
         VALUES (?,?,?,?)
         """,(room_code,floor,room_type, directions))
     connection.commit()
@@ -45,10 +45,22 @@ def add_staff(full_name,role,room_id):
     connection = sqlite3.connect(DB_PATH)
     cursor = connection.cursor()
     cursor.execute("""
-    INSERT INTO staff (full_name,role,room_id)
+    INSERT OR IGNORE INTO  staff (full_name,role,room_id)
     VALUES (?,?,?,?)
     """,(full_name,role,room_id))
     connection.commit()
     connection.close()
+def get_room_id(room_code):
+    connection = sqlite3.connect(DB_PATH)
+    cursor = connection.cursor()
+    cursor.execute(
+        "SELECT id FROM rooms WHERE room_code = ?",
+        (room_code,)
+    )
+    result = cursor.fetchone()
+    connection.close()
+    if result:
+        return result[0]
+    return None
 if __name__ == "__main__":
     create_database()
