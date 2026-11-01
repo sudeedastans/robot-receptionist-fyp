@@ -83,37 +83,116 @@ def get_room(room_code):
     connection.close()
     return result
 # Finds staff information and office location using JOIN.
-def get_staff(full_name):
-    connection = sqlite3.connect(DB_PATH)
-    cursor = connection.cursor()
 
-    # JOIN connects staff with their assigned room.
-    # COLLATE NOCASE ignores uppercase and lowercase differences.
+def get_staff(full_name):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
     cursor.execute("""
-    SELECT full_name, role, room_code, floor, directions
-    FROM staff
-    JOIN rooms ON staff.room_id = rooms.id
-    WHERE full_name = ? COLLATE NOCASE
-    """,(full_name,))
-    result = cursor.fetchone()
-    connection.close()
-    return result
+        SELECT
+            staff.full_name,
+            staff.role,
+            rooms.room_code,
+            rooms.floor,
+            rooms.directions,
+            staff.email,
+            staff.photo_path
+        FROM staff
+        JOIN rooms ON staff.room_id = rooms.id
+        WHERE staff.full_name = ? COLLATE NOCASE
+    """, (full_name,))
+
+    staff = cursor.fetchone()
+    conn.close()
+
+    return staff
+def add_staff_contact_columns():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # Check existing columns
+    cursor.execute("PRAGMA table_info(staff)")
+    columns = [row[1] for row in cursor.fetchall()]
+
+    # Add email column if it does not exist
+    if "email" not in columns:
+        cursor.execute(
+            "ALTER TABLE staff ADD COLUMN email TEXT"
+        )
+
+    # Add photo path column if it does not exist
+    if "photo_path" not in columns:
+        cursor.execute(
+            "ALTER TABLE staff ADD COLUMN photo_path TEXT"
+        )
+
+    conn.commit()
+    conn.close()
+
+def update_staff_contact(staff_id, email, photo_path):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        UPDATE staff
+        SET email = ?, photo_path = ?
+        WHERE id = ?
+    """, (email, photo_path, staff_id))
+
+    conn.commit()
+    conn.close()
+
+
 if __name__ == "__main__":
     create_database()
+    add_staff_contact_columns()
+    add_staff('Jen Joe', 'Lecturer', 'MAE305')
+    add_staff('Ahmad Lotfi', 'Lecturer', 'MAE304')
+    add_staff('Jen Dan', 'Lecturer', 'MAE303')
+    add_staff('Dash Tan', 'Lecturer', 'MAE302')
+    add_room('MAE305', 3, 'Staff room', 'Go to the third floor. Turn right. The room is the third door.')
+    add_room('MAE304', 3, 'Staff Room', 'Go to the third floor and turn right.')
+    add_room('MAE303', 3, 'Staff Room', 'Go to the third floor and turn left.')
+    add_room('MAE302', 3, 'Staff Room', 'Go to the third floor and turn left.')
+    add_room('MAE103', 1, 'Classroom', 'Go to the first floor and turn left.')
+    add_room('MAE104', 1, 'Classroom', 'Go to the first floor and turn left.')
+    add_room('MAE105', 1, 'Classroom', 'Go to the first floor and continue straight.')
+    add_room('MAE203', 2, 'Laboratory', 'Go to the second floor and turn left.')
+    add_room('MAE204', 2, 'Laboratory', 'Go to the second floor and turn left.')
+    add_room('MAE205', 2, 'Laboratory', 'Go to the second floor and continue straight.')
+    # Fictional contact information for testing
+    update_staff_contact(
+        1,
+        "jen.joe@example.com",
+        "assets/staff/jen_joe.jpeg"
+    )
 
-    # Add sample room
-    add_room(
-        "MAE305",
+    update_staff_contact(
         3,
-        "Staff room",
-        "Go to the third floor. Turn right. The room is the third door."
+        "ahmad@example.com",
+        "assets/staff/ahmad_lotfi.jpeg"
     )
 
-    # Add fictional staff member
-    add_staff(
-        "Jen Joe",
-        "Lecturer",
-        "MAE305"
+    update_staff_contact(
+        4,
+        "jen.dan@example.com",
+        "assets/staff/jen_dan.png"
     )
 
+    update_staff_contact(
+        5,
+        "dash.tan@example.com",
+        "assets/staff/dash_tan.jpeg"
+    )
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.executemany(
+            "UPDATE staff SET photo_path = ? WHERE id = ?",
+            [
+                ("assets/staff/jen_joe.png", 1),
+                ("assets/staff/ahmad_lotfi.png", 3),
+                ("assets/staff/jen_dan.png", 4),
+                ("assets/staff/dash_tan.png", 5)
+            ]
+        )
     print("Data added successfully.")
+
