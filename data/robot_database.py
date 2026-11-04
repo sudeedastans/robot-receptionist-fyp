@@ -1,5 +1,7 @@
 import sqlite3
 from pathlib import Path
+import secrets
+
 DB_PATH = Path(__file__).resolve().parent / "robot.db"
 # Creates the rooms and staff tables if they do not exist.
 def create_database():
@@ -141,7 +143,107 @@ def update_staff_contact(staff_id, email, photo_path):
 
     conn.commit()
     conn.close()
+#Same 30 appointment times for every staff member
+MAY_APPOINTMENTS = [
+    "2027-05-03 10:00",
+    "2027-05-04 10:00",
+    "2027-05-05 10:00",
+    "2027-05-06 10:00",
+    "2027-05-07 10:00"
+]
+def setup_appointments():
+    with sqlite3.connect(DB_PATH) as conn:
+        #stores available appointment times
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS appointment_slots(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                staff_id INTEGER NOT NULL,
+                slot_time TEXT NOT NULL,
+                FOREIGN KEY (staff_id) REFERENCES staff(id),
+                UNIQUE(staff_id, slot_time)
+                )""")
+        #stores confirmed bookings
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS bookings(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                booking_reference TEXT UNIQUE NOT NULL,
+                slot_id INTEGER NOT NULL,
+                visitor_name TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'Confirmed',
+                booked_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (slot_id) REFERENCES appointment_slots(id)
+                )""")
 
+        # Prevent two confirmed bookings for one slot
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS
+            unique_confirmed_slot
+            ON bookings(slot_id)
+            WHERE status = 'Confirmed'
+        """)
+        # Get all staff IDs
+        staff_ids = conn.execute(
+            "SELECT id FROM staff"
+        ).fetchall()
+        # Add the same five appointments for each staff member
+        for staff in staff_ids:
+            staff_id = staff[0]
+
+            for date in MAY_APPOINTMENTS:
+                conn.execute("""
+                            INSERT OR IGNORE INTO appointment_slots
+                            (staff_id, slot_time)
+                            VALUES (?, ?)
+                        """, (staff_id, date))
+#COLLATE NOCASE = BUYUK KUCUK HARF FARKINI GORMEZDEN GEL
+def get_available_slots(staff_name):
+    with sqlite3.connect(DB_PATH) as conn:
+
+        slots = conn.execute("""
+            SELECT appointment_slots.id, appointment_slots.slot_time
+            FROM appointment_slots
+            JOIN staff ON appointment_slots.staff_id = staff.id
+            WHERE staff.full_name = ? COLLATE NOCASE
+              AND appointment_slots.slot_time IN (?, ?, ?, ?, ?)
+              AND NOT EXISTS (
+                  SELECT 1 FROM bookings
+                  WHERE bookings.slot_id = appointment_slots.id
+                    AND bookings.status = 'Confirmed'
+              )
+            ORDER BY appointment_slots.slot_time
+        """, (staff_name, *MAY_APPOINTMENTS)).fetchall()
+
+        return slots
+
+def book_appointment(slot_id):
+
+    # Generate a booking reference
+    reference = "RR-" + secrets.token_hex(4).upper()
+
+    with sqlite3.connect(DB_PATH) as conn:
+
+        # Check if the selected slot exists
+        slot = conn.execute("""
+            SELECT slot_time
+            FROM appointment_slots
+            WHERE id = ?
+        """, (slot_id,)).fetchone()
+
+        if slot is None or slot[0] not in MAY_APPOINTMENTS:
+            return None
+
+        # Save the booking
+        try:
+            conn.execute("""
+                INSERT INTO bookings
+                (booking_reference, slot_id, visitor_name)
+                VALUES (?, ?, ?)
+            """, (reference, slot_id, "Demo Visitor"))
+
+            return reference
+
+        except sqlite3.IntegrityError:
+            return None
 
 if __name__ == "__main__":
     create_database()
@@ -195,4 +297,8 @@ if __name__ == "__main__":
             ]
         )
     print("Data added successfully.")
+    setup_appointments()
+    print("Appointment slots created successfully!")
+    print(get_available_slots("Jen Joe"))
+    slots = get_available_slots("Jen Joe")
 
