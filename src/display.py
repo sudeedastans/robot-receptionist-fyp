@@ -1,6 +1,7 @@
 import tkinter as tk
 from data.robot_database import get_room, get_staff, get_available_slots,book_appointment,get_booking_details
 from pathlib import Path
+from src.question_handler import understand_question
 # Colour palette
 BG = "#0E192B"
 CARD = "#1B2B45"
@@ -301,7 +302,15 @@ class RobotDisplay:
         )
         self.warning_label.pack(pady=(0, 12))
 
-        # Keyboard testing
+        self.root.bind(
+            "u",
+            lambda e: self.handle_question("Where is the library?")
+        )
+
+        self.root.bind(
+            "g",
+            lambda e: self.handle_question("Thank you")
+        )
         self.root.bind("a", lambda e: self.select_booking_slot(0))
         self.root.bind("0", lambda e: self.show_booking_slots())
         self.root.bind("1", lambda e: self.show_welcome())
@@ -606,6 +615,50 @@ class RobotDisplay:
         else:
             self.map_note_label.config(
                 text="Blue = selected room"
+            )
+    #Connect question understanding to Tkinter screens
+    def handle_question(self,question):
+        #understand the visitors questions
+        intent, value = understand_question(question)
+
+        #room enquiry
+        if intent == "room":
+            self.show_room_from_db(value)
+        #staff enquiry
+        if intent == "staff":
+            self.show_staff_from_db(value)
+        #appointment booking
+        elif intent == "booking":
+            if value is not None:
+                self.show_staff_from_db(value)
+                if self.current_staff is not None:
+                    self.show_booking_slots()
+            else:
+                self.update_screen(
+                    "Staff Required",
+                    "Who would you like to meet?"
+                    "Please mention a staff member's name."
+                    "INFORMATION REQUIRED",
+                    YELLOW
+                )
+        #End conservation
+        elif intent == "goodbye":
+            self.current_staff =None
+            self.update_screen(
+                "Goodbye!",
+                "Have a great day!",
+                "Thank you!",
+                "SESSION ENDED",
+                BLUE
+            )
+        #question not understood
+        else:
+            self.update_screen(
+                "Sorry!",
+                "I didn't understand your question.",
+                "Please try asking again.",
+                "NOT UNDERSTOOD",
+                YELLOW
             )
 
     def run(self):
