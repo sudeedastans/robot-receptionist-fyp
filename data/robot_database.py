@@ -143,7 +143,7 @@ def update_staff_contact(staff_id, email, photo_path):
 
     conn.commit()
     conn.close()
-#Same 30 appointment times for every staff member
+#Same five appointment times for every staff member
 MAY_APPOINTMENTS = [
     "2027-05-03 10:00",
     "2027-05-04 10:00",
@@ -217,7 +217,8 @@ def get_available_slots(staff_name):
 
 def book_appointment(slot_id):
 
-    # Generate a booking reference
+    # Generate a booking reference "RR-" sistemimizin referans ön eki.
+    # secrets.token_hex(4) dört rastgele baytı hexadecimal karakterlerle gösterir. Sonuç sekiz karakter uzunluğundadır.
     reference = "RR-" + secrets.token_hex(4).upper()
 
     with sqlite3.connect(DB_PATH) as conn:
@@ -244,6 +245,38 @@ def book_appointment(slot_id):
 
         except sqlite3.IntegrityError:
             return None
+
+# Get booking details for the confirmation screen
+def get_booking_details(reference):
+
+    with sqlite3.connect(DB_PATH) as conn:
+
+        booking = conn.execute("""
+            SELECT
+                bookings.booking_reference,
+                staff.full_name,
+                staff.email,
+                rooms.room_code,
+                rooms.floor,
+                appointment_slots.slot_time
+
+            FROM bookings
+
+            JOIN appointment_slots
+                ON bookings.slot_id = appointment_slots.id
+
+            JOIN staff
+                ON appointment_slots.staff_id = staff.id
+
+            LEFT JOIN rooms
+                ON staff.room_id = rooms.id
+
+            WHERE bookings.booking_reference = ?
+              AND bookings.status = 'Confirmed'
+        """, (reference,)).fetchone()
+
+        return booking
+
 
 if __name__ == "__main__":
     create_database()

@@ -1,5 +1,5 @@
 import tkinter as tk
-from data.robot_database import get_room, get_staff
+from data.robot_database import get_room, get_staff, get_available_slots,book_appointment,get_booking_details
 from pathlib import Path
 # Colour palette
 BG = "#0E192B"
@@ -250,6 +250,43 @@ class RobotDisplay:
             anchor="w",
             pady=(8, 0)
         )
+        #Appointment booking screen
+        self.booking_view = tk.Frame(self.card, bg=CARD)
+        self.booking_title = tk.Label(
+            self.booking_view,
+            text ="Available Appointments",
+            font = ("Arial",28,"bold"),
+            fg= WHITE,
+            bg=CARD
+        )
+        self.booking_title.pack(pady=(20,10))
+        self.booking_staff_label = tk.Label(
+            self.booking_view,
+            font= ("Arial",18),
+            fg= BLUE,
+            bg=CARD
+        )
+        self.booking_staff_label.pack(pady=10)
+        #Container for appointment dates
+        self.slots_frame = tk.Frame(
+            self.booking_view,
+            bg=CARD
+        )
+        self.slots_frame.pack(pady=10)
+
+        # Information message for booking screen
+        self.booking_note = tk.Label(
+            self.booking_view,
+            font=("Arial", 14),
+            fg=MUTED,
+            bg=CARD
+        )
+        self.booking_note.pack(pady=10)
+
+        # Booking variables
+        self.current_staff = None
+        self.available_slots = []
+        self.pending_slot = None
 
         # Warning message
         self.warning_label = tk.Label(
@@ -265,6 +302,8 @@ class RobotDisplay:
         self.warning_label.pack(pady=(0, 12))
 
         # Keyboard testing
+        self.root.bind("a", lambda e: self.select_booking_slot(0))
+        self.root.bind("0", lambda e: self.show_booking_slots())
         self.root.bind("1", lambda e: self.show_welcome())
         self.root.bind("2", lambda e: self.show_listening())
         self.root.bind("3", lambda e: self.show_thinking())
@@ -272,6 +311,11 @@ class RobotDisplay:
         self.root.bind("4", lambda e: self.show_room_from_db("MAE305"))
         self.root.bind("6", lambda e: self.show_room_from_db("MAE204"))
         self.root.bind("7", lambda e: self.show_room_from_db("MAE104"))
+        # Confirm appointment
+        self.root.bind("y", lambda e: self.confirm_booking())
+
+        # Go back without booking
+        self.root.bind("n", lambda e: self.cancel_booking_selection())
         self.root.bind(
             "5",
             lambda e: self.show_staff_from_db("Jen Joe")
@@ -295,7 +339,7 @@ class RobotDisplay:
 
     # Updates the standard screen
     def update_screen(self, title, subtitle, info, status, colour):
-
+        self.booking_view.pack_forget()
         self.room_view.pack_forget()
         self.standard_view.pack(
             fill="both",
@@ -344,7 +388,7 @@ class RobotDisplay:
 
     # Displays room information
     def show_room_info(self, room_code, floor, room_type, directions):
-
+        self.booking_view.pack_forget()
         room_code = room_code.strip().upper()
 
         # Hide staff photo and email
@@ -493,14 +537,17 @@ class RobotDisplay:
         staff = get_staff(full_name)
 
         if staff is None:
+            self.current_staff = None
             self.update_screen(
                 "Staff Not Found",
-                "Sorry, I couldn't find this person.",
+                "Sorry, I couldn't find this staff member.",
                 "Please try another name.",
                 "NOT FOUND",
                 YELLOW
             )
             return
+
+        self.current_staff = staff[0]
 
         self.show_staff_info(*staff)
 
@@ -563,6 +610,188 @@ class RobotDisplay:
 
     def run(self):
         self.root.mainloop()
+
+
+
+    def show_booking_slots(self):
+
+        if self.current_staff is None:
+            return
+
+        # Get available appointments from SQLite
+        self.available_slots = get_available_slots(
+            self.current_staff
+        )
+
+        self.pending_slot = None
+
+        # Hide other screens
+        self.standard_view.pack_forget()
+        self.room_view.pack_forget()
+
+        # Show booking screen
+        self.booking_view.pack(
+            fill="both",
+            expand=True,
+            padx=30,
+            pady=20
+        )
+
+        self.booking_title.config(
+            text="Available Appointments"
+        )
+
+        self.booking_staff_label.config(
+            text=f"Staff: {self.current_staff}"
+        )
+
+        # Clear previous labels
+        for widget in self.slots_frame.winfo_children():
+            widget.destroy()
+
+        if not self.available_slots:
+            tk.Label(
+                self.slots_frame,
+                text="No available appointments.",
+                font=("Arial", 18),
+                fg=WHITE,
+                bg=CARD
+            ).pack(pady=20)
+
+            self.booking_note.config(
+                text="No appointments available for this staff member."
+            )
+            return
+
+        # Display appointment dates
+        for slot_id, slot_time in self.available_slots:
+
+            tk.Label(
+                self.slots_frame,
+                text=slot_time,
+                font=("Arial", 20),
+                fg=WHITE,
+                bg="#29405C",
+                width=35,
+                pady=10
+            ).pack(pady=5)
+
+        self.booking_note.config(
+            text="Press A to select the first available appointment."
+        )
+
+        self.status_label.config(
+            text="APPOINTMENTS",
+            fg=BLUE
+        )
+    def select_booking_slot(self, index):
+
+        # Only work when booking screen is visible
+        if not self.booking_view.winfo_ismapped():
+            return
+
+        if not self.available_slots:
+            return
+
+        if self.pending_slot is not None:
+            return
+
+        # Select the first available appointment
+        self.pending_slot = self.available_slots[index]
+
+        slot_id, slot_time = self.pending_slot
+
+        # Clear appointment list
+        for widget in self.slots_frame.winfo_children():
+            widget.destroy()
+
+        self.booking_title.config(
+            text="Confirm Appointment"
+        )
+
+        tk.Label(
+            self.slots_frame,
+            text=f"{self.current_staff}\n\n{slot_time}",
+            font=("Arial", 25, "bold"),
+            fg=WHITE,
+            bg=CARD,
+            justify="center"
+        ).pack(pady=60)
+
+        self.booking_note.config(
+            text="Press Y to confirm or N to go back."
+        )
+
+        self.status_label.config(
+            text="CONFIRM BOOKING",
+            fg=YELLOW
+        )
+    def confirm_booking(self):
+
+        if self.pending_slot is None:
+            return
+
+        slot_id, slot_time = self.pending_slot
+
+        # Save appointment to SQLite
+        reference = book_appointment(slot_id)
+
+        if reference is None:
+            self.show_booking_slots()
+            self.booking_note.config(
+                text="Booking failed. Please try another appointment."
+            )
+            return
+
+        # Get confirmation details
+        details = get_booking_details(reference)
+
+        self.pending_slot = None
+
+        # Clear old screen content
+        for widget in self.slots_frame.winfo_children():
+            widget.destroy()
+
+        self.booking_title.config(
+            text="Appointment Confirmed!"
+        )
+
+        if details:
+            ref, name, email, office, floor, date = details
+
+            message = (
+                f"Booking Number: {ref}\n\n"
+                f"Staff: {name}\n"
+                f"Email: {email or 'Not available'}\n"
+                f"Office: {office or 'Not available'}\n"
+                f"Floor: {floor}\n"
+                f"Date & Time: {date}"
+            )
+        else:
+            message = f"Booking Number: {reference}"
+
+        tk.Label(
+            self.slots_frame,
+            text=message,
+            font=("Arial", 19),
+            fg=WHITE,
+            bg=CARD,
+            justify="left",
+            wraplength=750
+        ).pack(pady=30)
+
+        self.booking_note.config(
+            text="Please keep your booking number."
+        )
+
+        self.status_label.config(
+            text="BOOKING CONFIRMED",
+            fg=BLUE
+        )
+    def cancel_booking_selection(self):
+
+        if self.pending_slot is not None:
+            self.show_booking_slots()
 
 
 if __name__ == "__main__":
